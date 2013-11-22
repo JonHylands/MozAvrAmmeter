@@ -51,7 +51,7 @@ static uint8_t      USB_Receive_Buffer_Data[128];
 static RingBuffer_t Send_USB_Buffer; // USARTtoUSB_Buffer
 
 /** Underlying data buffer for \ref Send_USB_Buffer, where the stored bytes are located. */
-static uint8_t      Send_USB_Buffer_Data[128];
+static uint8_t      Send_USB_Buffer_Data[400];
 
 static Sample_t samples[10];
 static uint8_t currentSample = 0;
@@ -226,6 +226,15 @@ static uint16_t SPI_DoConversion ( void )
 		value |= ( SPI_DataIn() & 0x01 );
 		SPI_ClockHigh();
 	}
+
+	for ( i = 0; i < 4; i++ )
+	{
+		// spin the clock 4 times to ignore the trailing zero bits
+		us_spin (SPI_CLOCK_TIME);
+		SPI_ClockLow();
+		us_spin (SPI_CLOCK_TIME);
+		SPI_ClockHigh();
+	}
 	sei();
 	
 	SPI_SlaveSelectHigh();
@@ -282,6 +291,15 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					break;
 				}
 
+				case PACKET_CMD_SEND_SAMPLE:
+				{
+					printf ("got PACKET_CMD_SEND_SAMPLE command\n");
+					currentSample = 0;
+					CreateSample();
+					SendSamples(1, PACKET_CMD_SAMPLE);
+					break;
+				}
+
 				default:
 				{
 					// there are other commands that we don't care about....
@@ -323,7 +341,7 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 			/* Never send more than one bank size less one byte to the host at a time, so that we don't block
 				* while a Zero Length Packet (ZLP) to terminate the transfer is sent if the host isn't listening */
 			uint8_t BytesToSend = MIN(BufferCount, (CDC_TXRX_EPSIZE - 1));
-			printf ("Sending %d bytes\n", BytesToSend);
+			// printf ("Sending %d bytes\n", BytesToSend);
 
 			/* Read bytes from the USART receive buffer into the USB IN endpoint */
 			while (BytesToSend--)
@@ -355,18 +373,18 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 	USB_USBTask();
 }
 
-void SendSamples() {
+void SendSamples(uint8_t packetCount, uint8_t command) {
 
 	RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
 	RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
 	RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
 	uint8_t checksum = 0x01;
-	uint8_t packetLength = (sizeof(Sample_t) * 10) + 2;
+	uint8_t packetLength = (sizeof(Sample_t) * packetCount) + 2;
 	RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
 	checksum += packetLength;
-	RingBuffer_Insert(&Send_USB_Buffer, PACKET_CMD_ASYNC); // command
-	checksum += PACKET_CMD_ASYNC;
-	for (int i=0; i<10; i++) {
+	RingBuffer_Insert(&Send_USB_Buffer, command); // command
+	checksum += command;
+	for (int i=0; i<packetCount; i++) {
 		uint8_t * sampleStructPtr = (uint8_t*)&samples[i];
 		for (int j=0; j<sizeof(samples[i]); j++) {
 			RingBuffer_Insert(&Send_USB_Buffer, sampleStructPtr[j]);
@@ -376,10 +394,16 @@ void SendSamples() {
 	RingBuffer_Insert(&Send_USB_Buffer, checksum);
 }
 
-void ProcessSample() {
-	
-	uint16_t value = SPI_DoConversion();
-	int16_t current = value / 20;
+void CreateSample() {
+
+	uint32_t total = 0;
+	for (int index=0; index < 10; index++) {
+	  uint16_t value = SPI_DoConversion();
+	  total += value;
+	}
+	float f_value = (float)total / 10.0;
+	float f_current = f_value / 28.065;
+	int16_t current = ((int)f_current);
 	if (!ChargeFlagIn())
 		current *= -1;
 	uint16_t voltageValue = ADC_Read (0);
@@ -387,10 +411,15 @@ void ProcessSample() {
 	samples[currentSample].current = current;
 	samples[currentSample].voltage = voltage;
 	samples[currentSample].msCounter = getMsTickCount();
+}
+
+void ProcessSample() {
+	
+	CreateSample();
 	currentSample++;
 	if (currentSample >= 10) {
 		if (sendingSamples) {
-			SendSamples();
+			SendSamples(10, PACKET_CMD_ASYNC);
 		}
 		currentSample = 0;
 	}
@@ -432,8 +461,8 @@ void SetupHardware(void)
 	SPI_MasterInit();
 
 	SetDirectionIn(CHARGE_FLAG);
-	SetDirectionOut(BATTERY);
 	Battery_EnableHigh();
+	SetDirectionOut(BATTERY);
 
 	InitTimer();
 #if (ARCH == ARCH_AVR8)

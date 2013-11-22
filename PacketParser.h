@@ -79,6 +79,8 @@ struct PACKET_Instance_s
 #define PACKET_CMD_ASYNC       0x04
 #define PACKET_CMD_TURN_OFF_BATTERY       0x05
 #define PACKET_CMD_TURN_ON_BATTERY       0x06
+#define PACKET_CMD_SEND_SAMPLE 0x07
+#define PACKET_CMD_SAMPLE 0x08
 
 /* ---- Variable Externs ------------------------------------------------- */
 
