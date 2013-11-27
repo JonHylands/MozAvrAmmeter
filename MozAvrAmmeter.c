@@ -57,6 +57,11 @@ static Sample_t samples[10];
 static uint8_t currentSample = 0;
 static uint8_t sendingSamples = 0;
 
+static uint16_t heartbeatCycle;
+static uint16_t heartbeatOnTime;
+static uint16_t heartbeatCycleSize;
+
+
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
  *  within a device can be differentiated from one another.
@@ -109,10 +114,18 @@ USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface =
 #define BATTERY_PORT PORTB
 #define BATTERY_MASK ( 1 << 6 )
 
+#define ANALOG_ENABLE_DDR DDRF
+#define ANALOG_ENABLE_PORT PORTF
+#define ANALOG_ENABLE_MASK ( 1 << 6 )
+
 #define CHARGE_FLAG_DDR DDRB
 #define CHARGE_FLAG_PORT PORTB
 #define CHARGE_FLAG_PIN PINB
 #define CHARGE_FLAG_MASK ( 1 << 4 )
+
+#define LED_DDR DDRE
+#define LED_PORT PORTE
+#define LED_MASK ( 1 << 6 )
 
 #define SPI_CLOCK_TIME 10
 
@@ -168,6 +181,26 @@ static inline void Battery_EnableHigh( void )
 static inline void Battery_EnableLow( void )
 {
 	BATTERY_PORT &= ~BATTERY_MASK;
+}
+
+static inline void Analog_EnableHigh( void )
+{
+	ANALOG_ENABLE_PORT |= ANALOG_ENABLE_MASK;
+}
+
+static inline void Analog_EnableLow( void )
+{
+	ANALOG_ENABLE_PORT &= ~ANALOG_ENABLE_MASK;
+}
+
+static inline void turnOnLED( void )
+{
+	LED_PORT |= LED_MASK;
+}
+
+static inline void turnOffLED( void )
+{
+	LED_PORT &= ~LED_MASK;
 }
 
 static inline uint8_t ChargeFlagIn( void )
@@ -402,9 +435,13 @@ void CreateSample() {
 	  total += value;
 	}
 	float f_value = (float)total / 10.0;
-	float f_current = f_value / 28.065;
+	if (f_value > 220.0)
+		f_value -= 220.0;
+	else
+		f_value = 0.0;
+	float f_current = f_value / 26.679;
 	int16_t current = ((int)f_current);
-	if (!ChargeFlagIn())
+	if (!ChargeFlagIn() && f_value > 500)
 		current *= -1;
 	uint16_t voltageValue = ADC_Read (0);
 	uint16_t voltage = voltageValue * 5;
@@ -415,16 +452,28 @@ void CreateSample() {
 
 void ProcessSample() {
 	
+	if (!sendingSamples)
+		return;
+
 	CreateSample();
 	currentSample++;
 	if (currentSample >= 10) {
-		if (sendingSamples) {
-			SendSamples(10, PACKET_CMD_ASYNC);
-		}
+		SendSamples(10, PACKET_CMD_ASYNC);
 		currentSample = 0;
 	}
 }
 
+
+void LEDHeartbeat (void)
+{
+	heartbeatCycle += 1;
+	heartbeatCycle %= heartbeatCycleSize;
+
+	if (heartbeatCycle == 0)
+		turnOffLED();
+	if (heartbeatCycle == heartbeatOnTime)
+		turnOnLED();
+}
 
 /** Main program entry point. This routine contains the overall program flow, including initial
  *  setup of all components and the main program loop.
@@ -452,6 +501,7 @@ int main(void)
 			ProcessUSB(&inst);
 		}
 		ProcessSample();
+		LEDHeartbeat();
 	}
 }
 
@@ -461,8 +511,17 @@ void SetupHardware(void)
 	SPI_MasterInit();
 
 	SetDirectionIn(CHARGE_FLAG);
+	SetDirectionOut(ANALOG_ENABLE);
+	Analog_EnableHigh();
+
+	// We set the battery enable PORT high first before the DDR so it will not get pulled low
+	// in between setting the DDR and then the PORT
 	Battery_EnableHigh();
 	SetDirectionOut(BATTERY);
+	Battery_EnableHigh();
+
+	SetDirectionOut(LED);
+	turnOffLED();
 
 	InitTimer();
 #if (ARCH == ARCH_AVR8)
@@ -480,6 +539,11 @@ void SetupHardware(void)
 	ADC_Init (ADC_PRESCALAR_AUTO);
 	InitUART ();
 	fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
+
+	heartbeatCycle = 0;
+	heartbeatOnTime = 1350;
+	heartbeatCycleSize = 1500;
+
 	printf ("\nUSB Test\n\n");
 }
 
