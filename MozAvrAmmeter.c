@@ -435,11 +435,12 @@ void CreateSample() {
 	  total += value;
 	}
 	float f_value = (float)total / 10.0;
-	if (f_value > 220.0)
-		f_value -= 220.0;
+	if (f_value > 255.0)
+		f_value -= 255.0;
 	else
 		f_value = 0.0;
-	float f_current = f_value / 26.679;
+	float f_current = f_value / 3.1909; // we're adding a 10x factor here to give us tenths of a mA
+// 	float f_current = f_value;
 	int16_t current = ((int)f_current);
 	if (!ChargeFlagIn() && f_value > 500)
 		current *= -1;
