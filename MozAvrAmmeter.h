@@ -63,6 +63,16 @@
 		/** LED mask for the library LED driver, to indicate that an error has occurred in the USB interface. */
 		#define LEDMASK_USB_ERROR        (LEDS_LED1 | LEDS_LED3)
 
+		#define SAMPLE_NORMAL 1
+		#define SAMPLE_RAW 2
+
+		#define CALIBRATION_EEPROM_BASE 0
+		#define CALIBRATION_SIGNATURE_LOCATION 0
+		#define CALIBRATION_FLOOR_LOCATION 1
+		#define CALIBRATION_SCALE_LOCATION 5
+		
+		#define CALIBRATION_SIGNATURE 0x42
+
 	/* Typedefs */
 		typedef struct
 		{

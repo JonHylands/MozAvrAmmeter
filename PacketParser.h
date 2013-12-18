@@ -81,6 +81,8 @@ struct PACKET_Instance_s
 #define PACKET_CMD_TURN_ON_BATTERY       0x06
 #define PACKET_CMD_SEND_SAMPLE 0x07
 #define PACKET_CMD_SAMPLE 0x08
+#define PACKET_CMD_SET_CALIBRATION 0x09
+#define PACKET_CMD_GET_RAW_SAMPLE 0x0A
 
 /* ---- Variable Externs ------------------------------------------------- */
 

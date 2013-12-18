@@ -61,6 +61,9 @@ static uint16_t heartbeatCycle;
 static uint16_t heartbeatOnTime;
 static uint16_t heartbeatCycleSize;
 
+static float calibrationFloor;
+static float calibrationScale;
+
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -277,6 +280,26 @@ static uint16_t SPI_DoConversion ( void )
 } // SPI_DoConversion
 
 
+static void ReadCalibrationValues ( void )
+{
+	printf("reading calibration constants from EEPROM\n");
+	uint8_t signature = eeprom_read_byte((uint8_t*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SIGNATURE_LOCATION));
+	if (signature == CALIBRATION_SIGNATURE) {
+		calibrationFloor = eeprom_read_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_FLOOR_LOCATION));
+		calibrationScale = eeprom_read_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SCALE_LOCATION));
+	} else {
+		printf("Calibration signature doesn't match - using default values\n");
+		calibrationFloor = 255.0;
+		calibrationScale = 3.1909;
+	}
+	char output[16];
+	dtostrf(calibrationFloor, 7, 4, output);
+	printf("FLOOR: %s\n", output);
+	dtostrf(calibrationScale, 7, 4, output);
+	printf("SCALE: %s\n", output);
+}
+
+
 static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PACKET_Error_t err)
 {
 	if (err == PACKET_ERROR_NONE)
@@ -328,8 +351,34 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 				{
 					printf ("got PACKET_CMD_SEND_SAMPLE command\n");
 					currentSample = 0;
-					CreateSample();
+					CreateSample(SAMPLE_NORMAL);
 					SendSamples(1, PACKET_CMD_SAMPLE);
+					break;
+				}
+
+				case PACKET_CMD_SET_CALIBRATION:
+				{
+					printf ("got PACKET_CMD_SET_CALIBRATION command\n");
+					calibrationFloor = *(float *)&packet->m_param[0];
+					calibrationScale = *(float *)&packet->m_param[4];
+					eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_FLOOR_LOCATION), calibrationFloor);
+					eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SCALE_LOCATION), calibrationScale);
+					eeprom_write_byte((uint8_t*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SIGNATURE_LOCATION), CALIBRATION_SIGNATURE);
+					printf("Calibration parameters saved to EEPROM\n");
+					char output[16];
+					dtostrf(calibrationFloor, 7, 4, output);
+					printf("FLOOR: %s\n", output);
+					dtostrf(calibrationScale, 7, 4, output);
+					printf("SCALE: %s\n", output);
+					break;
+				}
+
+				case PACKET_CMD_GET_RAW_SAMPLE:
+				{
+					printf ("got PACKET_CMD_GET_RAW_SAMPLE command\n");
+					currentSample = 0;
+					CreateSample(SAMPLE_RAW);
+					SendSamples(1, PACKET_CMD_GET_RAW_SAMPLE);
 					break;
 				}
 
@@ -424,10 +473,10 @@ void SendSamples(uint8_t packetCount, uint8_t command) {
 			checksum += sampleStructPtr[j];
 		}
 	}
-	RingBuffer_Insert(&Send_USB_Buffer, checksum);
+	RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
 }
 
-void CreateSample() {
+void CreateSample(int sampleType) {
 
 	uint32_t total = 0;
 	for (int index=0; index < 10; index++) {
@@ -435,12 +484,16 @@ void CreateSample() {
 	  total += value;
 	}
 	float f_value = (float)total / 10.0;
-	if (f_value > 255.0)
-		f_value -= 255.0;
-	else
-		f_value = 0.0;
-	float f_current = f_value / 3.1909; // we're adding a 10x factor here to give us tenths of a mA
-// 	float f_current = f_value;
+	float f_current;
+	if (sampleType == SAMPLE_NORMAL) {
+		if (f_value > calibrationFloor)
+			f_value -= calibrationFloor;
+		else
+			f_value = 0.0;
+		f_current = f_value / calibrationScale; // 3.1909 - we're adding a 10x factor here to give us tenths of a mA
+	} else {
+		f_current = f_value;
+	}
 	int16_t current = ((int)f_current);
 	if (!ChargeFlagIn() && f_value > 500)
 		current *= -1;
@@ -456,7 +509,7 @@ void ProcessSample() {
 	if (!sendingSamples)
 		return;
 
-	CreateSample();
+	CreateSample(SAMPLE_NORMAL);
 	currentSample++;
 	if (currentSample >= 10) {
 		SendSamples(10, PACKET_CMD_ASYNC);
@@ -545,7 +598,8 @@ void SetupHardware(void)
 	heartbeatOnTime = 1350;
 	heartbeatCycleSize = 1500;
 
-	printf ("\nUSB Test\n\n");
+	printf ("\nMozilla Ammeter\n\n");
+	ReadCalibrationValues();
 }
 
 /** Event handler for the library USB Connection event. */
