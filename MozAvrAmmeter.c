@@ -620,7 +620,7 @@ void SetupHardware(void)
 	float version = (float)AMMETER_VERSION / 10.0;
 	char output[16];
 	dtostrf(version, 2, 1, output);
-	printf("\nversion: %s\n", output);
+	printf("version: %s\n\n", output);
 	ReadCalibrationValues();
 }
 
