@@ -83,6 +83,8 @@ struct PACKET_Instance_s
 #define PACKET_CMD_SAMPLE 0x08
 #define PACKET_CMD_SET_CALIBRATION 0x09
 #define PACKET_CMD_GET_RAW_SAMPLE 0x0A
+#define PACKET_CMD_GET_VERSION 0x0B
+#define PACKET_CMD_VERSION 0x0C
 
 /* ---- Variable Externs ------------------------------------------------- */
 

@@ -72,6 +72,8 @@
 		#define CALIBRATION_SCALE_LOCATION 5
 		
 		#define CALIBRATION_SIGNATURE 0x42
+		
+		#define AMMETER_VERSION 2 // actual version = AMMETER_VERSION / 10.0
 
 	/* Typedefs */
 		typedef struct

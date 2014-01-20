@@ -382,6 +382,24 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					break;
 				}
 
+				case PACKET_CMD_GET_VERSION:
+				{
+					printf ("got PACKET_CMD_GET_VERSION command\n");
+					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+					RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
+					uint8_t checksum = 0x01;
+					uint8_t packetLength = 1 + 2;
+					RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
+					checksum += packetLength;
+					RingBuffer_Insert(&Send_USB_Buffer, PACKET_CMD_VERSION); // command
+					checksum += PACKET_CMD_VERSION;
+					RingBuffer_Insert(&Send_USB_Buffer, AMMETER_VERSION);
+					checksum += AMMETER_VERSION;
+					RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
+					break;
+				}
+
 				default:
 				{
 					// there are other commands that we don't care about....
