@@ -381,7 +381,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					SendSamples(1, PACKET_CMD_GET_RAW_SAMPLE);
 					break;
 				}
-
+				
 				case PACKET_CMD_GET_VERSION:
 				{
 					printf ("got PACKET_CMD_GET_VERSION command\n");
@@ -617,6 +617,10 @@ void SetupHardware(void)
 	heartbeatCycleSize = 1500;
 
 	printf ("\nMozilla Ammeter\n\n");
+	float version = (float)AMMETER_VERSION / 10.0;
+	char output[16];
+	dtostrf(version, 2, 1, output);
+	printf("\nversion: %s\n", output);
 	ReadCalibrationValues();
 }
 
