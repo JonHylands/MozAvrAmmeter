@@ -61,6 +61,8 @@ static uint16_t heartbeatCycle;
 static uint16_t heartbeatOnTime;
 static uint16_t heartbeatCycleSize;
 
+static int16_t lastCurrentReading = 0;
+
 static float calibrationFloor;
 static float calibrationScale;
 
@@ -512,9 +514,19 @@ void CreateSample(int sampleType) {
 	} else {
 		f_current = f_value;
 	}
-	int16_t current = ((int)f_current);
-	if (!ChargeFlagIn() && f_value > 500)
-		current *= -1;
+	int16_t current = ((int16_t)f_current);
+	//
+	//		We're getting spurious negative readings when the current is low (<10 mA)
+	//		Filter them out here
+	//
+	if (!ChargeFlagIn() && f_value > 500) {
+		if (lastCurrentReading < 0) { // only go negative if we get two consencutive readings that are negative
+			current *= -1;
+		}
+		lastCurrentReading = ((int16_t)f_current) * -1; // force lastCurrentReading negative regardless
+	} else {
+		lastCurrentReading = current;
+	}
 	uint16_t voltageValue = ADC_Read (0);
 	uint16_t voltage = voltageValue * 5;
 	samples[currentSample].current = current;
