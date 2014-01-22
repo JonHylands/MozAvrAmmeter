@@ -674,6 +674,8 @@ void SetupHardware(void)
 	dtostrf(version, 2, 1, output);
 	printf("version: %s\n\n", output);
 	ReadCalibrationValues();
+	printf("\n");
+	ReadSerialNumber();
 }
 
 /** Event handler for the library USB Connection event. */
