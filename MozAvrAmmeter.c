@@ -66,6 +66,8 @@ static int16_t lastCurrentReading = 0;
 static float calibrationFloor;
 static float calibrationScale;
 
+static uint16_t serialNumber = 0;
+
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -302,6 +304,14 @@ static void ReadCalibrationValues ( void )
 }
 
 
+static void ReadSerialNumber ( void )
+{
+	printf("reading serial number from EEPROM\n");
+	serialNumber = eeprom_read_word((uint16_t*)(CALIBRATION_EEPROM_BASE + SERIAL_NUMBER_LOCATION));
+	printf("Serial Number: %d\n", serialNumber);
+}
+
+
 static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PACKET_Error_t err)
 {
 	if (err == PACKET_ERROR_NONE)
@@ -401,7 +411,37 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
 					break;
 				}
-
+				
+				case PACKET_CMD_GET_SERIAL:
+				{
+					printf ("got PACKET_CMD_GET_SERIAL command\n");
+					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+					RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
+					uint8_t checksum = 0x01;
+					uint8_t packetLength = 2 + 2;
+					RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
+					checksum += packetLength;
+					RingBuffer_Insert(&Send_USB_Buffer, PACKET_CMD_SERIAL); // command
+					checksum += PACKET_CMD_SERIAL;
+					RingBuffer_Insert(&Send_USB_Buffer, serialNumber & 0xFF);
+					checksum += serialNumber & 0xFF;
+					RingBuffer_Insert(&Send_USB_Buffer, serialNumber >> 8);
+					checksum += serialNumber >> 8;
+					RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
+					break;
+				}
+				
+				case PACKET_CMD_SET_SERIAL:
+				{
+					printf ("got PACKET_CMD_SET_SERIAL command\n");
+					serialNumber = *(uint16_t *)&packet->m_param[0];
+					eeprom_write_word((float*)(CALIBRATION_EEPROM_BASE + SERIAL_NUMBER_LOCATION), serialNumber);
+					printf("Serial number saved to EEPROM\n");
+					printf("Serial Number: %d\n", serialNumber);
+					break;
+				}
+				
 				default:
 				{
 					// there are other commands that we don't care about....

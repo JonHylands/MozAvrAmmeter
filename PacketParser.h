@@ -85,6 +85,10 @@ struct PACKET_Instance_s
 #define PACKET_CMD_GET_RAW_SAMPLE 0x0A
 #define PACKET_CMD_GET_VERSION 0x0B
 #define PACKET_CMD_VERSION 0x0C
+#define PACKET_CMD_SET_SERIAL 0x0D
+#define PACKET_CMD_GET_SERIAL 0x0E
+#define PACKET_CMD_SERIAL 0x0F
+
 
 /* ---- Variable Externs ------------------------------------------------- */
 

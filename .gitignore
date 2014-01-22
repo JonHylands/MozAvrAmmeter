@@ -7,4 +7,5 @@
 *.lss
 *.map
 *.sym
+*.bin
 obj/
