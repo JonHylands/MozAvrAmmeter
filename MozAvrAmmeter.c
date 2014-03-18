@@ -35,7 +35,6 @@
  */
 
 #include "Delay.h"
-#include "Timer.h"
 #include "UART.h"
 #include "adc.h"
 #include "MozAvrAmmeter.h"
@@ -67,6 +66,9 @@ static float calibrationFloor;
 static float calibrationScale;
 
 static uint16_t serialNumber = 0;
+
+// msTickCountBase is updated once per 250 ms in the Timer1 ISR
+static uint32_t msTickCountBase = 0;
 
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
@@ -133,6 +135,14 @@ USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface =
 #define LED_DDR DDRE
 #define LED_PORT PORTE
 #define LED_MASK ( 1 << 6 )
+
+#define FLAG_DDR DDRD
+#define FLAG_PORT PORTD
+#define FLAG_MASK ( 1 << 2 )
+
+#define FLAG2_DDR DDRD
+#define FLAG2_PORT PORTD
+#define FLAG2_MASK ( 1 << 3 )
 
 #define SPI_CLOCK_TIME 10
 
@@ -208,6 +218,26 @@ static inline void turnOnLED( void )
 static inline void turnOffLED( void )
 {
 	LED_PORT &= ~LED_MASK;
+}
+
+static inline void turnOnFlag( void )
+{
+	FLAG_PORT |= FLAG_MASK;
+}
+
+static inline void turnOffFlag( void )
+{
+	FLAG_PORT &= ~FLAG_MASK;
+}
+
+static inline void turnOnFlag2( void )
+{
+	FLAG2_PORT |= FLAG2_MASK;
+}
+
+static inline void turnOffFlag2( void )
+{
+	FLAG2_PORT &= ~FLAG2_MASK;
 }
 
 static inline uint8_t ChargeFlagIn( void )
@@ -286,29 +316,29 @@ static uint16_t SPI_DoConversion ( void )
 
 static void ReadCalibrationValues ( void )
 {
-	printf("reading calibration constants from EEPROM\n");
+	//printf("reading calibration constants from EEPROM\n");
 	uint8_t signature = eeprom_read_byte((uint8_t*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SIGNATURE_LOCATION));
 	if (signature == CALIBRATION_SIGNATURE) {
 		calibrationFloor = eeprom_read_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_FLOOR_LOCATION));
 		calibrationScale = eeprom_read_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SCALE_LOCATION));
 	} else {
-		printf("Calibration signature doesn't match - using default values\n");
+		//printf("Calibration signature doesn't match - using default values\n");
 		calibrationFloor = 255.0;
 		calibrationScale = 3.1909;
 	}
 	char output[16];
 	dtostrf(calibrationFloor, 7, 4, output);
-	printf("FLOOR: %s\n", output);
+	//printf("FLOOR: %s\n", output);
 	dtostrf(calibrationScale, 7, 4, output);
-	printf("SCALE: %s\n", output);
+	//printf("SCALE: %s\n", output);
 }
 
 
 static void ReadSerialNumber ( void )
 {
-	printf("reading serial number from EEPROM\n");
+	//printf("reading serial number from EEPROM\n");
 	serialNumber = eeprom_read_word((uint16_t*)(CALIBRATION_EEPROM_BASE + SERIAL_NUMBER_LOCATION));
-	printf("Serial Number: %d\n", serialNumber);
+	//printf("Serial Number: %d\n", serialNumber);
 }
 
 
@@ -323,16 +353,16 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 			{
 				case PACKET_CMD_SET_ID:
 				{
-					printf ("got SET_ID command\n");
+					//printf ("got SET_ID command\n");
 					break;
 				}
 
 				case PACKET_CMD_START_ASYNC:
 				{
-					printf ("got START_ASYNC command\n");
+					//printf ("got START_ASYNC command\n");
 					cli(); // turn off interrupts so we can zero the ms counter
 					currentSample = 0;
-					gMsTickCount = 0;
+					msTickCountBase = 0;
 					sei(); // turn interrupts back on
 					sendingSamples = 1;
 					break;
@@ -340,28 +370,29 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 
 				case PACKET_CMD_STOP_ASYNC:
 				{
-					printf ("got STOP_ASYNC command\n");
+					//printf ("got STOP_ASYNC command\n");
 					sendingSamples = 0;
 					break;
 				}
 
 				case PACKET_CMD_TURN_OFF_BATTERY:
 				{
-					printf ("got TURN_OFF_BATTERY command\n");
+					//printf ("got TURN_OFF_BATTERY command\n");
 					Battery_EnableLow();
 					break;
 				}
 
 				case PACKET_CMD_TURN_ON_BATTERY:
 				{
-					printf ("got TURN_ON_BATTERY command\n");
+					//printf ("got TURN_ON_BATTERY command\n");
 					Battery_EnableHigh();
 					break;
 				}
 
 				case PACKET_CMD_SEND_SAMPLE:
 				{
-					printf ("got PACKET_CMD_SEND_SAMPLE command\n");
+					//printf ("got PACKET_CMD_SEND_SAMPLE command\n");
+					turnOnFlag();
 					currentSample = 0;
 					CreateSample(SAMPLE_NORMAL);
 					SendSamples(1, PACKET_CMD_SAMPLE);
@@ -370,24 +401,24 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 
 				case PACKET_CMD_SET_CALIBRATION:
 				{
-					printf ("got PACKET_CMD_SET_CALIBRATION command\n");
+					//printf ("got PACKET_CMD_SET_CALIBRATION command\n");
 					calibrationFloor = *(float *)&packet->m_param[0];
 					calibrationScale = *(float *)&packet->m_param[4];
 					eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_FLOOR_LOCATION), calibrationFloor);
 					eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SCALE_LOCATION), calibrationScale);
 					eeprom_write_byte((uint8_t*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SIGNATURE_LOCATION), CALIBRATION_SIGNATURE);
-					printf("Calibration parameters saved to EEPROM\n");
+					//printf("Calibration parameters saved to EEPROM\n");
 					char output[16];
 					dtostrf(calibrationFloor, 7, 4, output);
-					printf("FLOOR: %s\n", output);
+					//printf("FLOOR: %s\n", output);
 					dtostrf(calibrationScale, 7, 4, output);
-					printf("SCALE: %s\n", output);
+					//printf("SCALE: %s\n", output);
 					break;
 				}
 
 				case PACKET_CMD_GET_RAW_SAMPLE:
 				{
-					printf ("got PACKET_CMD_GET_RAW_SAMPLE command\n");
+					//printf ("got PACKET_CMD_GET_RAW_SAMPLE command\n");
 					currentSample = 0;
 					CreateSample(SAMPLE_RAW);
 					SendSamples(1, PACKET_CMD_GET_RAW_SAMPLE);
@@ -396,7 +427,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 				
 				case PACKET_CMD_GET_VERSION:
 				{
-					printf ("got PACKET_CMD_GET_VERSION command\n");
+					//printf ("got PACKET_CMD_GET_VERSION command\n");
 					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
 					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
 					RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
@@ -414,7 +445,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 				
 				case PACKET_CMD_GET_SERIAL:
 				{
-					printf ("got PACKET_CMD_GET_SERIAL command\n");
+					//printf ("got PACKET_CMD_GET_SERIAL command\n");
 					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
 					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
 					RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
@@ -434,28 +465,29 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 				
 				case PACKET_CMD_SET_SERIAL:
 				{
-					printf ("got PACKET_CMD_SET_SERIAL command\n");
+					//printf ("got PACKET_CMD_SET_SERIAL command\n");
 					serialNumber = *(uint16_t *)&packet->m_param[0];
 					eeprom_write_word((float*)(CALIBRATION_EEPROM_BASE + SERIAL_NUMBER_LOCATION), serialNumber);
-					printf("Serial number saved to EEPROM\n");
-					printf("Serial Number: %d\n", serialNumber);
+					//printf("Serial number saved to EEPROM\n");
+					//printf("Serial Number: %d\n", serialNumber);
 					break;
 				}
 				
 				default:
 				{
 					// there are other commands that we don't care about....
-					printf ("ID:0x%02x Cmd: 0x%02x *** Unknown ***\n", packet->m_id, packet->m_cmd);
+					//printf ("ID:0x%02x Cmd: 0x%02x *** Unknown ***\n", packet->m_id, packet->m_cmd);
 					break;
 				}
 			}
 		}
-		else
-			printf ("Got packet for ID: %3d\n", packet->m_id);
+		else {
+			//printf ("Got packet for ID: %3d\n", packet->m_id);
+		}
 	}
 	else if (packet->m_id == 0x01)
 	{
-		printf ("CRC Error\n");
+		//printf ("CRC Error\n");
 	}
 }
 
@@ -483,7 +515,7 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 			/* Never send more than one bank size less one byte to the host at a time, so that we don't block
 				* while a Zero Length Packet (ZLP) to terminate the transfer is sent if the host isn't listening */
 			uint8_t BytesToSend = MIN(BufferCount, (CDC_TXRX_EPSIZE - 1));
-			// printf ("Sending %d bytes\n", BytesToSend);
+			// //printf ("Sending %d bytes\n", BytesToSend);
 
 			/* Read bytes from the USART receive buffer into the USB IN endpoint */
 			while (BytesToSend--)
@@ -493,21 +525,24 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 				if (CDC_Device_SendByte(&VirtualSerial_CDC_Interface,
 										RingBuffer_Peek(&Send_USB_Buffer)) != ENDPOINT_READYWAIT_NoError)
 				{
-					printf("Error sending\n");
+					//printf("Error sending\n");
 					break;
 				}
 
 				/* Dequeue the already sent byte from the buffer now we have confirmed that no transmission error occurred */
-				// printf ("Sent %x\n", RingBuffer_Peek(&Send_USB_Buffer));
+				// //printf ("Sent %x\n", RingBuffer_Peek(&Send_USB_Buffer));
 				RingBuffer_Remove(&Send_USB_Buffer);
 			}
+			turnOffFlag();
+			//printf("#");
 		}
 	}
 
 	/* Process the next byte from USB */
 	if (!(RingBuffer_IsEmpty(&USB_Receive_Buffer))) {
 		uint8_t receivedByte = RingBuffer_Remove(&USB_Receive_Buffer);
-// 		printf("USB got byte: 0x%02x\n", receivedByte);
+// 		//printf("USB got byte: 0x%02x\n", receivedByte);
+		
 		PACKET_ProcessChar(inst, receivedByte);
 	}
 
@@ -605,7 +640,7 @@ void LEDHeartbeat (void)
 int main(void)
 {
 	PACKET_Instance_t inst;
-	msTick_t previousCount;
+	uint32_t previousCount;
 
 	SetupHardware();
 
@@ -629,6 +664,60 @@ int main(void)
 	}
 }
 
+//===========================================================
+//
+//	SetupTickTimer()
+//
+//	We use a CTC 16 bit timer here to count ms in hardware.
+
+void SetupTickTimer(void)
+{
+	// Set up Timer1 with prescaler = 64 and CTC mode
+	// This assumes a 16 MHz crystal on the MCU
+	TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);
+
+	// initialize counter
+	TCNT1 = 0;
+
+	// initialize compare value - 62499 = 250 ms ISR
+	OCR1A = 62499;
+
+	// enable compare interrupt
+	TIMSK1 |= (1 << OCIE1A);
+
+	// enable global interrupts
+	sei();
+}
+
+//	This ISR will fire once per 250 ms.
+//
+//	The timer is in no way is dependent on the ISR, so any lag
+//	introduced with servicing the ISR will be averaged out 
+//	over many interrupts.
+
+ISR (TIMER1_COMPA_vect)
+{
+	msTickCountBase += 250; // increment the ms counter base
+    // toggle the I/O line so we can see it on a logic analyzer
+    FLAG2_PORT ^= FLAG2_MASK;
+}
+
+// Because of possible rollover issues, getMsTickCount() may not return
+// the correct answer if called from inside an ISR or from inside a piece of
+// code that has interrupts turned off.
+
+uint32_t getMsTickCount(void)
+{
+	uint32_t subCount = TCNT1; // apparently the compiler makes this assignment atomic
+	// TCNT1 is incrementing at a rate of 250 KHz, so by dividing its value
+	// by 250, we get a 1000 Hz (or one millisecond) clock value.
+	// Add that value to the base that is incremented in the ISR every 250 ms to get
+	// a true monotonically increasing ms counter that is accurate regardless of processor load.
+	return (msTickCountBase + (subCount / 250));
+}
+
+//===========================================================
+
 /** Configures the board hardware and chip peripherals for the demo's functionality. */
 void SetupHardware(void)
 {
@@ -647,7 +736,11 @@ void SetupHardware(void)
 	SetDirectionOut(LED);
 	turnOffLED();
 
-	InitTimer();
+	SetDirectionOut(FLAG);
+	turnOffFlag();
+	SetDirectionOut(FLAG2);
+	turnOffFlag2();
+
 #if (ARCH == ARCH_AVR8)
 	/* Disable watchdog if enabled by bootloader/fuses */
 	MCUSR &= ~(1 << WDRF);
@@ -657,24 +750,25 @@ void SetupHardware(void)
 	clock_prescale_set(clock_div_1);
 #endif
 
+	SetupTickTimer();
 	/* Hardware Initialization */
 	LEDs_Init();
 	USB_Init();
 	ADC_Init (ADC_PRESCALAR_AUTO);
-	InitUART ();
-	fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
+// 	InitUART ();
+// 	fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
 
 	heartbeatCycle = 0;
 	heartbeatOnTime = 1350;
 	heartbeatCycleSize = 1500;
 
-	printf ("\nMozilla Ammeter\n\n");
+	//printf ("\nMozilla Ammeter\n\n");
 	float version = (float)AMMETER_VERSION / 10.0;
 	char output[16];
 	dtostrf(version, 2, 1, output);
-	printf("version: %s\n\n", output);
+	//printf("version: %s\n\n", output);
 	ReadCalibrationValues();
-	printf("\n");
+	//printf("\n");
 	ReadSerialNumber();
 }
 

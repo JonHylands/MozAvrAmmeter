@@ -88,6 +88,7 @@
 
 	/* Function Prototypes: */
 		void SetupHardware(void);
+		uint32_t getMsTickCount(void);
 
 		void EVENT_USB_Device_Connect(void);
 		void EVENT_USB_Device_Disconnect(void);

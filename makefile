@@ -22,7 +22,6 @@ OBJDIR        = ./obj
 
 PROJ	     = ../projects
 PROJ_SRC     = $(PROJ)/common/avr/adc.c \
-	       $(PROJ)/common/avr/Timer.c \
 	       $(PROJ)/common/avr/UART.c \
 	       $(PROJ)/common/avr/Delay.c
 
