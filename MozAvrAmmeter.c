@@ -70,6 +70,8 @@ static uint16_t serialNumber = 0;
 // msTickCountBase is updated once per 250 ms in the Timer1 ISR
 static uint32_t msTickCountBase = 0;
 
+static uint8_t debugMode = 0;
+
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -445,7 +447,9 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 				
 				case PACKET_CMD_GET_SERIAL:
 				{
-					//printf ("got PACKET_CMD_GET_SERIAL command\n");
+                    if (debugMode) {
+                        printf ("got PACKET_CMD_GET_SERIAL command\n");
+                    }
 					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
 					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
 					RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
@@ -472,6 +476,12 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					//printf("Serial Number: %d\n", serialNumber);
 					break;
 				}
+				
+                case PACKET_CMD_DUMP_DEBUG_INFO:
+                {
+                    dumpDebugInfo();
+                    break;
+                }
 				
 				default:
 				{
@@ -634,6 +644,17 @@ void LEDHeartbeat (void)
 		turnOnLED();
 }
 
+void dumpDebugInfo (void)
+{
+    if (!debugMode) {
+        InitUART ();
+        fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
+        debugMode = 1;
+    }
+    printf ("\nDebug Mode Info\n\n");
+    printf ("msTickCountBase: %u\n", msTickCountBase);
+}
+
 /** Main program entry point. This routine contains the overall program flow, including initial
  *  setup of all components and the main program loop.
  */
@@ -699,7 +720,7 @@ ISR (TIMER1_COMPA_vect)
 {
 	msTickCountBase += 250; // increment the ms counter base
     // toggle the I/O line so we can see it on a logic analyzer
-    FLAG2_PORT ^= FLAG2_MASK;
+    // FLAG2_PORT ^= FLAG2_MASK;
 }
 
 // Because of possible rollover issues, getMsTickCount() may not return
@@ -755,20 +776,15 @@ void SetupHardware(void)
 	LEDs_Init();
 	USB_Init();
 	ADC_Init (ADC_PRESCALAR_AUTO);
-// 	InitUART ();
-// 	fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
 
 	heartbeatCycle = 0;
 	heartbeatOnTime = 1350;
 	heartbeatCycleSize = 1500;
 
-	//printf ("\nMozilla Ammeter\n\n");
 	float version = (float)AMMETER_VERSION / 10.0;
 	char output[16];
 	dtostrf(version, 2, 1, output);
-	//printf("version: %s\n\n", output);
 	ReadCalibrationValues();
-	//printf("\n");
 	ReadSerialNumber();
 }
 
