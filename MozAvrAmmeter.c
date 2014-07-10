@@ -652,7 +652,7 @@ void dumpDebugInfo (void)
         debugMode = 1;
     }
     printf ("\nDebug Mode Info\n\n");
-    printf ("msTickCountBase: %u\n", msTickCountBase);
+    printf ("msTickCountBase: %lu\n", msTickCountBase);
 }
 
 /** Main program entry point. This routine contains the overall program flow, including initial
