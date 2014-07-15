@@ -525,7 +525,9 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 			/* Never send more than one bank size less one byte to the host at a time, so that we don't block
 				* while a Zero Length Packet (ZLP) to terminate the transfer is sent if the host isn't listening */
 			uint8_t BytesToSend = MIN(BufferCount, (CDC_TXRX_EPSIZE - 1));
-			// //printf ("Sending %d bytes\n", BytesToSend);
+            if (debugMode) {
+                printf ("Sending %d bytes\n", BytesToSend);
+            }
 
 			/* Read bytes from the USART receive buffer into the USB IN endpoint */
 			while (BytesToSend--)
@@ -535,12 +537,16 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 				if (CDC_Device_SendByte(&VirtualSerial_CDC_Interface,
 										RingBuffer_Peek(&Send_USB_Buffer)) != ENDPOINT_READYWAIT_NoError)
 				{
-					//printf("Error sending\n");
+                    if (debugMode) {
+                        printf("Error sending\n");
+                    }
 					break;
 				}
 
 				/* Dequeue the already sent byte from the buffer now we have confirmed that no transmission error occurred */
-				// //printf ("Sent %x\n", RingBuffer_Peek(&Send_USB_Buffer));
+                if (debugMode) {
+                    printf ("Sent %x\n", RingBuffer_Peek(&Send_USB_Buffer));
+                }
 				RingBuffer_Remove(&Send_USB_Buffer);
 			}
 			turnOffFlag();
@@ -551,7 +557,9 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 	/* Process the next byte from USB */
 	if (!(RingBuffer_IsEmpty(&USB_Receive_Buffer))) {
 		uint8_t receivedByte = RingBuffer_Remove(&USB_Receive_Buffer);
-// 		//printf("USB got byte: 0x%02x\n", receivedByte);
+        if (debugMode) {
+            printf("USB got byte: 0x%02x\n", receivedByte);
+        }
 		
 		PACKET_ProcessChar(inst, receivedByte);
 	}
