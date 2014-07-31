@@ -662,7 +662,7 @@ void dumpDebugInfo (void)
     printf ("\nDebug Mode Info\n\n");
     printf ("msTickCountBase: %lu\n", msTickCountBase);
     printf ("USB_Receive_Buffer Count: %u\n", RingBuffer_GetCount(&USB_Receive_Buffer));
-    printf ("Send_USB_Buffer_Data Count: %u\n", RingBuffer_GetCount(&Send_USB_Buffer_Data));
+    printf ("Send_USB_Buffer_Data Count: %u\n", RingBuffer_GetCount(&Send_USB_Buffer));
 }
 
 /** Main program entry point. This routine contains the overall program flow, including initial
