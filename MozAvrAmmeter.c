@@ -659,10 +659,16 @@ void dumpDebugInfo (void)
         fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
         debugMode = 1;
     }
-    printf ("\nDebug Mode Info\n\n");
+    printf ("\n===\nDebug Mode Info\n\n");
     printf ("msTickCountBase: %lu\n", msTickCountBase);
     printf ("USB_Receive_Buffer Count: %u\n", RingBuffer_GetCount(&USB_Receive_Buffer));
     printf ("Send_USB_Buffer_Data Count: %u\n", RingBuffer_GetCount(&Send_USB_Buffer));
+    if (UEINTX & (1 << TXINI)) {
+        printf ("UEINTX -> TXINI: set\n");
+    } else {
+        printf ("UEINTX -> TXINI: clear\n");
+    }
+    printf ("===\n\n");
 }
 
 /** Main program entry point. This routine contains the overall program flow, including initial
