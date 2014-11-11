@@ -89,6 +89,8 @@ struct PACKET_Instance_s
 #define PACKET_CMD_GET_SERIAL 0x0E
 #define PACKET_CMD_SERIAL 0x0F
 #define PACKET_CMD_DUMP_DEBUG_INFO 0x10
+#define PACKET_CMD_TURN_ON_COMPENSATION 0x11
+#define PACKET_CMD_TURN_OFF_COMPENSATION 0x12
 
 
 /* ---- Variable Externs ------------------------------------------------- */

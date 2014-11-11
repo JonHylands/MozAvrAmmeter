@@ -72,6 +72,8 @@ static uint32_t msTickCountBase = 0;
 
 static uint8_t debugMode = 0;
 
+static uint8_t compensation = 0;
+
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -410,10 +412,10 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SCALE_LOCATION), calibrationScale);
 					eeprom_write_byte((uint8_t*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SIGNATURE_LOCATION), CALIBRATION_SIGNATURE);
 					//printf("Calibration parameters saved to EEPROM\n");
-					char output[16];
-					dtostrf(calibrationFloor, 7, 4, output);
+					//char output[16];
+					//dtostrf(calibrationFloor, 7, 4, output);
 					//printf("FLOOR: %s\n", output);
-					dtostrf(calibrationScale, 7, 4, output);
+					//dtostrf(calibrationScale, 7, 4, output);
 					//printf("SCALE: %s\n", output);
 					break;
 				}
@@ -482,7 +484,19 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
                     dumpDebugInfo();
                     break;
                 }
-				
+
+                case PACKET_CMD_TURN_ON_COMPENSATION:
+                {
+                    compensation = 1;
+                    break;
+                }
+
+                case PACKET_CMD_TURN_OFF_COMPENSATION:
+                {
+                    compensation = 0;
+                    break;
+                }
+
 				default:
 				{
 					// there are other commands that we don't care about....
@@ -591,6 +605,7 @@ void SendSamples(uint8_t packetCount, uint8_t command) {
 
 void CreateSample(int sampleType) {
 
+	turnOnFlag2();
 	uint32_t total = 0;
 	for (int index=0; index < 10; index++) {
 	  uint16_t value = SPI_DoConversion();
@@ -622,9 +637,13 @@ void CreateSample(int sampleType) {
 	}
 	uint16_t voltageValue = ADC_Read (0);
 	uint16_t voltage = voltageValue * 5;
+	if (compensation) {
+		current = (int16_t)((float)current * (float)voltage / BASELINE_VOLTAGE);
+	}
 	samples[currentSample].current = current;
 	samples[currentSample].voltage = voltage;
 	samples[currentSample].msCounter = getMsTickCount();
+	turnOffFlag2();
 }
 
 void ProcessSample() {
