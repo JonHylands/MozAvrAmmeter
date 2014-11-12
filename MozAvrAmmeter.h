@@ -77,7 +77,7 @@
 		
 		#define SERIAL_NUMBER_LOCATION 9
 		
-		#define AMMETER_VERSION 6 // actual version = AMMETER_VERSION / 10.0
+		#define AMMETER_VERSION 7 // actual version = AMMETER_VERSION / 10.0
 
 	/* Typedefs */
 		typedef struct
