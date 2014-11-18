@@ -423,7 +423,9 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 
                 case PACKET_CMD_GET_CALIBRATION:
                 {
-                    //printf ("got PACKET_CMD_SET_CALIBRATION command\n");
+                    if (debugMode) {
+                        printf ("got PACKET_CMD_GET_CALIBRATION command\n");
+                    }
                     RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
                     RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
                     RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
@@ -439,7 +441,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
                         RingBuffer_Insert(&Send_USB_Buffer, value);
                         checksum += value;
                     }
-                    for (index=0; index < floatSize; index++) {
+                    for (int index=0; index < floatSize; index++) {
                         uint8_t value = ((uint8_t *)&calibrationScale)[index];
                         RingBuffer_Insert(&Send_USB_Buffer, value);
                         checksum += value;
@@ -617,7 +619,7 @@ static void ProcessUSB(PACKET_Instance_t *inst)
                 }
 				RingBuffer_Remove(&Send_USB_Buffer);
 			}
-			turnOffFlag();
+			//turnOffFlag();
 			//printf("#");
 		}
 	}
