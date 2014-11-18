@@ -544,6 +544,10 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
                 case PACKET_CMD_TURN_ON_COMPENSATION:
                 {
                     compensation = 1;
+                    float value = *(float *)&packet->m_param[0];
+					if ((value >= 3.7) && (value <= 4.2)) {
+						baselineVoltage = value;
+					}
                     break;
                 }
 
@@ -743,6 +747,11 @@ void dumpDebugInfo (void)
     } else {
         printf ("UEINTX -> TXINI: clear\n");
     }
+    printf ("Compensation: %u\n", compensation);
+	char output[16];
+	dtostrf(baselineVoltage, 7, 4, output);
+	printf ("Baseline Voltage: %s\n", output);
+
     printf ("===\n\n");
 }
 
