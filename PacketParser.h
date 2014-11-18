@@ -91,6 +91,11 @@ struct PACKET_Instance_s
 #define PACKET_CMD_DUMP_DEBUG_INFO 0x10
 #define PACKET_CMD_TURN_ON_COMPENSATION 0x11
 #define PACKET_CMD_TURN_OFF_COMPENSATION 0x12
+#define PACKET_CMD_GET_CALIBRATION 0x13
+#define PACKET_CMD_CALIBRATION 0x14
+#define PACKET_CMD_GET_COMPENSATION 0x15
+#define PACKET_CMD_COMPENSATION 0x16
+
 
 
 /* ---- Variable Externs ------------------------------------------------- */

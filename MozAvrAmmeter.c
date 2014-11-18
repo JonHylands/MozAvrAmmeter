@@ -73,6 +73,7 @@ static uint32_t msTickCountBase = 0;
 static uint8_t debugMode = 0;
 
 static uint8_t compensation = 0;
+static float baselineVoltage = 4.2;
 
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
@@ -330,10 +331,10 @@ static void ReadCalibrationValues ( void )
 		calibrationFloor = 255.0;
 		calibrationScale = 3.1909;
 	}
-	char output[16];
-	dtostrf(calibrationFloor, 7, 4, output);
+	//char output[16];
+	//dtostrf(calibrationFloor, 7, 4, output);
 	//printf("FLOOR: %s\n", output);
-	dtostrf(calibrationScale, 7, 4, output);
+	//dtostrf(calibrationScale, 7, 4, output);
 	//printf("SCALE: %s\n", output);
 }
 
@@ -403,22 +404,75 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					break;
 				}
 
-				case PACKET_CMD_SET_CALIBRATION:
-				{
-					//printf ("got PACKET_CMD_SET_CALIBRATION command\n");
-					calibrationFloor = *(float *)&packet->m_param[0];
-					calibrationScale = *(float *)&packet->m_param[4];
-					eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_FLOOR_LOCATION), calibrationFloor);
-					eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SCALE_LOCATION), calibrationScale);
-					eeprom_write_byte((uint8_t*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SIGNATURE_LOCATION), CALIBRATION_SIGNATURE);
-					//printf("Calibration parameters saved to EEPROM\n");
-					//char output[16];
-					//dtostrf(calibrationFloor, 7, 4, output);
-					//printf("FLOOR: %s\n", output);
-					//dtostrf(calibrationScale, 7, 4, output);
-					//printf("SCALE: %s\n", output);
-					break;
-				}
+                case PACKET_CMD_SET_CALIBRATION:
+                {
+                    //printf ("got PACKET_CMD_SET_CALIBRATION command\n");
+                    calibrationFloor = *(float *)&packet->m_param[0];
+                    calibrationScale = *(float *)&packet->m_param[4];
+                    eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_FLOOR_LOCATION), calibrationFloor);
+                    eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SCALE_LOCATION), calibrationScale);
+                    eeprom_write_byte((uint8_t*)(CALIBRATION_EEPROM_BASE + CALIBRATION_SIGNATURE_LOCATION), CALIBRATION_SIGNATURE);
+                    //printf("Calibration parameters saved to EEPROM\n");
+                    //char output[16];
+                    //dtostrf(calibrationFloor, 7, 4, output);
+                    //printf("FLOOR: %s\n", output);
+                    //dtostrf(calibrationScale, 7, 4, output);
+                    //printf("SCALE: %s\n", output);
+                    break;
+                }
+
+                case PACKET_CMD_GET_CALIBRATION:
+                {
+                    //printf ("got PACKET_CMD_SET_CALIBRATION command\n");
+                    RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+                    RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+                    RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
+                    uint8_t checksum = 0x01;
+                    uint8_t floatSize = sizeof(calibrationFloor);
+                    uint8_t packetLength = (floatSize * 2) + 2;
+                    RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
+                    checksum += packetLength;
+                    RingBuffer_Insert(&Send_USB_Buffer, PACKET_CMD_CALIBRATION); // command
+                    checksum += PACKET_CMD_CALIBRATION;
+                    for (int index=0; index < floatSize; index++) {
+                        uint8_t value = ((uint8_t *)&calibrationFloor)[index];
+                        RingBuffer_Insert(&Send_USB_Buffer, value);
+                        checksum += value;
+                    }
+                    for (index=0; index < floatSize; index++) {
+                        uint8_t value = ((uint8_t *)&calibrationScale)[index];
+                        RingBuffer_Insert(&Send_USB_Buffer, value);
+                        checksum += value;
+                    }
+                    RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
+                    break;
+                }
+
+                case PACKET_CMD_GET_COMPENSATION:
+                {
+                    if (debugMode) {
+                        printf ("got PACKET_CMD_GET_COMPENSATION command\n");
+                    }
+                    RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+                    RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+                    RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
+                    uint8_t checksum = 0x01;
+                    uint8_t floatSize = sizeof(calibrationFloor);
+                    uint8_t packetLength = 1 + floatSize + 2;
+                    RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
+                    checksum += packetLength;
+                    RingBuffer_Insert(&Send_USB_Buffer, PACKET_CMD_COMPENSATION); // command
+                    checksum += PACKET_CMD_COMPENSATION;
+                    RingBuffer_Insert(&Send_USB_Buffer, compensation);
+                    checksum += compensation;
+                    for (int index=0; index < floatSize; index++) {
+                        uint8_t value = ((uint8_t *)&baselineVoltage)[index];
+                        RingBuffer_Insert(&Send_USB_Buffer, value);
+                        checksum += value;
+                    }
+                    RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
+                    break;
+                }
 
 				case PACKET_CMD_GET_RAW_SAMPLE:
 				{
@@ -428,7 +482,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					SendSamples(1, PACKET_CMD_GET_RAW_SAMPLE);
 					break;
 				}
-				
+
 				case PACKET_CMD_GET_VERSION:
 				{
 					//printf ("got PACKET_CMD_GET_VERSION command\n");
@@ -446,29 +500,29 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
 					break;
 				}
-				
-				case PACKET_CMD_GET_SERIAL:
-				{
+
+                case PACKET_CMD_GET_SERIAL:
+                {
                     if (debugMode) {
                         printf ("got PACKET_CMD_GET_SERIAL command\n");
                     }
-					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
-					RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
-					RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
-					uint8_t checksum = 0x01;
-					uint8_t packetLength = 2 + 2;
-					RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
-					checksum += packetLength;
-					RingBuffer_Insert(&Send_USB_Buffer, PACKET_CMD_SERIAL); // command
-					checksum += PACKET_CMD_SERIAL;
-					RingBuffer_Insert(&Send_USB_Buffer, serialNumber & 0xFF);
-					checksum += serialNumber & 0xFF;
-					RingBuffer_Insert(&Send_USB_Buffer, serialNumber >> 8);
-					checksum += serialNumber >> 8;
-					RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
-					break;
-				}
-				
+                    RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+                    RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+                    RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
+                    uint8_t checksum = 0x01;
+                    uint8_t packetLength = 2 + 2;
+                    RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
+                    checksum += packetLength;
+                    RingBuffer_Insert(&Send_USB_Buffer, PACKET_CMD_SERIAL); // command
+                    checksum += PACKET_CMD_SERIAL;
+                    RingBuffer_Insert(&Send_USB_Buffer, serialNumber & 0xFF);
+                    checksum += serialNumber & 0xFF;
+                    RingBuffer_Insert(&Send_USB_Buffer, serialNumber >> 8);
+                    checksum += serialNumber >> 8;
+                    RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
+                    break;
+                }
+
 				case PACKET_CMD_SET_SERIAL:
 				{
 					//printf ("got PACKET_CMD_SET_SERIAL command\n");
@@ -478,7 +532,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					//printf("Serial Number: %d\n", serialNumber);
 					break;
 				}
-				
+
                 case PACKET_CMD_DUMP_DEBUG_INFO:
                 {
                     dumpDebugInfo();
@@ -638,7 +692,7 @@ void CreateSample(int sampleType) {
 	uint16_t voltageValue = ADC_Read (0);
 	uint16_t voltage = voltageValue * 5;
 	if (compensation) {
-		current = (int16_t)((float)current * (float)voltage / BASELINE_VOLTAGE);
+		current = (int16_t)((float)current * (float)voltage / baselineVoltage);
 	}
 	samples[currentSample].current = current;
 	samples[currentSample].voltage = voltage;
