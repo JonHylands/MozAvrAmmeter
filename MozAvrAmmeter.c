@@ -695,14 +695,14 @@ void CreateSample(int sampleType) {
 	} else {
 		lastCurrentReading = current;
 	}
-	uint16_t voltageValue = ADC_Read (0);
+	uint32_t voltageValue = ADC_Read (0);
 	uint32_t millivolts = voltageValue * 5000 / 1023;
 	if ((sampleType == SAMPLE_NORMAL) && compensation) {
-		float realVoltage = (float)millivolts / 100.0;
+		float realVoltage = (float)millivolts / 1000.0;
 		current = (int16_t)((float)current * realVoltage / baselineVoltage);
 	}
 	samples[currentSample].current = current;
-	samples[currentSample].voltage = millivolts;
+	samples[currentSample].voltage = (uint16_t)millivolts;
 	samples[currentSample].msCounter = getMsTickCount();
 	turnOffFlag2();
 }
