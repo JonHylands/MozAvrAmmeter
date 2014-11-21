@@ -347,6 +347,17 @@ static void ReadSerialNumber ( void )
 }
 
 
+static void ReadCompensationFlag ( void )
+{
+	compensation = eeprom_read_byte((uint16_t*)(CALIBRATION_EEPROM_BASE + COMPENSATION_FLAG_LOCATION));
+	if (compensation == 0 || compensation == 1) {
+		baselineVoltage = eeprom_read_float((float*)(CALIBRATION_EEPROM_BASE + BASELINE_VOLTAGE_LOCATION));
+	} else {
+		baselineVoltage = 4.2;
+	}
+}
+
+
 static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PACKET_Error_t err)
 {
 	if (err == PACKET_ERROR_NONE)
@@ -524,7 +535,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
 					break;
 				}
-				
+
 				case PACKET_CMD_SET_SERIAL:
 				{
 					//printf ("got PACKET_CMD_SET_SERIAL command\n");
@@ -534,29 +545,32 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					//printf("Serial Number: %d\n", serialNumber);
 					break;
 				}
-				
+
 				case PACKET_CMD_DUMP_DEBUG_INFO:
 				{
 					dumpDebugInfo();
 					break;
 				}
-				
+
 				case PACKET_CMD_TURN_ON_COMPENSATION:
 				{
-					compensation = 1;
 					float value = *(float *)&packet->m_param[0];
 					if ((value >= 3.7) && (value <= 4.2)) {
+						compensation = 1;
+						eeprom_write_byte((float*)(CALIBRATION_EEPROM_BASE + COMPENSATION_FLAG_LOCATION), compensation);
 						baselineVoltage = value;
+						eeprom_write_float((float*)(CALIBRATION_EEPROM_BASE + BASELINE_VOLTAGE_LOCATION), baselineVoltage);
 					}
 					break;
 				}
-				
+
 				case PACKET_CMD_TURN_OFF_COMPENSATION:
 				{
 					compensation = 0;
+					eeprom_write_byte((float*)(CALIBRATION_EEPROM_BASE + COMPENSATION_FLAG_LOCATION), compensation);
 					break;
 				}
-				
+
 				default:
 				{
 					// there are other commands that we don't care about....
@@ -887,6 +901,7 @@ void SetupHardware(void)
 	dtostrf(version, 2, 1, output);
 	ReadCalibrationValues();
 	ReadSerialNumber();
+	ReadCompensationFlag();
 }
 
 /** Event handler for the library USB Connection event. */
