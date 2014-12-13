@@ -75,6 +75,8 @@ static uint8_t debugMode = 0;
 static uint8_t compensation = 0;
 static float baselineVoltage = 4.2;
 
+static uint8_t loggingFlag = 0;
+
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -358,6 +360,25 @@ static void ReadCompensationFlag ( void )
 }
 
 
+static void ReadLoggingFlag ( void )
+{
+	loggingFlag = eeprom_read_byte((uint16_t*)(CALIBRATION_EEPROM_BASE + LOGGING_FLAG_LOCATION));
+	if (loggingFlag) {
+		turnOnAsyncCapture();
+	}
+}
+
+
+void turnOnAsyncCapture (void )
+{
+	cli(); // turn off interrupts so we can zero the ms counter
+	currentSample = 0;
+	msTickCountBase = 0;
+	sei(); // turn interrupts back on
+	sendingSamples = 1;
+}
+
+
 static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PACKET_Error_t err)
 {
 	if (err == PACKET_ERROR_NONE)
@@ -376,11 +397,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 				case PACKET_CMD_START_ASYNC:
 				{
 					//printf ("got START_ASYNC command\n");
-					cli(); // turn off interrupts so we can zero the ms counter
-					currentSample = 0;
-					msTickCountBase = 0;
-					sei(); // turn interrupts back on
-					sendingSamples = 1;
+					turnOnAsyncCapture();
 					break;
 				}
 				
@@ -563,14 +580,36 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					}
 					break;
 				}
-
+				
 				case PACKET_CMD_TURN_OFF_COMPENSATION:
 				{
 					compensation = 0;
 					eeprom_write_byte((float*)(CALIBRATION_EEPROM_BASE + COMPENSATION_FLAG_LOCATION), compensation);
 					break;
 				}
-
+				
+				case PACKET_CMD_START_LOGGING:
+				{
+					loggingFlag = 1;
+					if (debugMode) {
+						debugMode = 0;
+					} else {
+						InitUART ();
+						fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
+					}
+					eeprom_write_byte((float*)(CALIBRATION_EEPROM_BASE + LOGGING_FLAG_LOCATION), loggingFlag);
+					turnOnAsyncCapture();
+					break;
+				}
+				
+				case PACKET_CMD_STOP_LOGGING:
+				{
+					sendingSamples = 0;
+					loggingFlag = 0;
+					eeprom_write_byte((float*)(CALIBRATION_EEPROM_BASE + LOGGING_FLAG_LOCATION), loggingFlag);
+					break;
+				}
+				
 				default:
 				{
 					// there are other commands that we don't care about....
@@ -656,25 +695,37 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 	USB_USBTask();
 }
 
-void SendSamples(uint8_t packetCount, uint8_t command) {
-	
-	RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
-	RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
-	RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
-	uint8_t checksum = 0x01;
-	uint8_t packetLength = (sizeof(Sample_t) * packetCount) + 2;
-	RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
-	checksum += packetLength;
-	RingBuffer_Insert(&Send_USB_Buffer, command); // command
-	checksum += command;
+
+void LogSamples(uint8_t packetCount) {
 	for (int i=0; i<packetCount; i++) {
-		uint8_t * sampleStructPtr = (uint8_t*)&samples[i];
-		for (int j=0; j<sizeof(samples[i]); j++) {
-			RingBuffer_Insert(&Send_USB_Buffer, sampleStructPtr[j]);
-			checksum += sampleStructPtr[j];
+		printf ("%u,%u,%lu\n", samples[i].voltage, samples[i].current, samples[i].msCounter);
+	}	
+}
+
+
+void SendSamples(uint8_t packetCount, uint8_t command) {
+
+	if (loggingFlag) {
+		LogSamples(packetCount);
+	} else {
+		RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+		RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+		RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
+		uint8_t checksum = 0x01;
+		uint8_t packetLength = (sizeof(Sample_t) * packetCount) + 2;
+		RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
+		checksum += packetLength;
+		RingBuffer_Insert(&Send_USB_Buffer, command); // command
+		checksum += command;
+		for (int i=0; i<packetCount; i++) {
+			uint8_t * sampleStructPtr = (uint8_t*)&samples[i];
+			for (int j=0; j<sizeof(samples[i]); j++) {
+				RingBuffer_Insert(&Send_USB_Buffer, sampleStructPtr[j]);
+				checksum += sampleStructPtr[j];
+			}
 		}
+		RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
 	}
-	RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
 }
 
 void CreateSample(int sampleType) {
@@ -902,6 +953,7 @@ void SetupHardware(void)
 	ReadCalibrationValues();
 	ReadSerialNumber();
 	ReadCompensationFlag();
+	ReadLoggingFlag();
 }
 
 /** Event handler for the library USB Connection event. */
