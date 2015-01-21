@@ -364,6 +364,8 @@ static void ReadLoggingFlag ( void )
 {
 	loggingFlag = eeprom_read_byte((uint16_t*)(CALIBRATION_EEPROM_BASE + LOGGING_FLAG_LOCATION));
 	if (loggingFlag) {
+		InitUART ();
+		fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
 		turnOnAsyncCapture();
 	}
 }
@@ -425,7 +427,7 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 				case PACKET_CMD_SEND_SAMPLE:
 				{
 					//printf ("got PACKET_CMD_SEND_SAMPLE command\n");
-					turnOnFlag();
+					//turnOnFlag();
 					currentSample = 0;
 					CreateSample(SAMPLE_NORMAL);
 					SendSamples(1, PACKET_CMD_SAMPLE);
@@ -730,7 +732,7 @@ void SendSamples(uint8_t packetCount, uint8_t command) {
 
 void CreateSample(int sampleType) {
 	
-	turnOnFlag2();
+	//turnOnFlag2();
 	uint32_t total = 0;
 	for (int index=0; index < 10; index++) {
 		uint16_t value = SPI_DoConversion();
@@ -769,7 +771,7 @@ void CreateSample(int sampleType) {
 	samples[currentSample].current = current;
 	samples[currentSample].voltage = (uint16_t)millivolts;
 	samples[currentSample].msCounter = getMsTickCount();
-	turnOffFlag2();
+	//turnOffFlag2();
 }
 
 void ProcessSample() {
@@ -923,10 +925,10 @@ void SetupHardware(void)
 	SetDirectionOut(LED);
 	turnOffLED();
 	
-	SetDirectionOut(FLAG);
-	turnOffFlag();
-	SetDirectionOut(FLAG2);
-	turnOffFlag2();
+// 	SetDirectionOut(FLAG);
+// 	turnOffFlag();
+// 	SetDirectionOut(FLAG2);
+// 	turnOffFlag2();
 	
 	#if (ARCH == ARCH_AVR8)
 	/* Disable watchdog if enabled by bootloader/fuses */
