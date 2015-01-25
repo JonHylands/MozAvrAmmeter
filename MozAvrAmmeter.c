@@ -56,9 +56,9 @@ static Sample_t samples[10];
 static uint8_t currentSample = 0;
 static uint8_t sendingSamples = 0;
 
-static uint16_t heartbeatCycle;
-static uint16_t heartbeatOnTime;
-static uint16_t heartbeatCycleSize;
+static uint32_t heartbeatCycle;
+static uint32_t heartbeatOnTime;
+static uint32_t heartbeatCycleSize;
 
 static int16_t lastCurrentReading = 0;
 
@@ -790,12 +790,12 @@ void ProcessSample() {
 
 void LEDHeartbeat (void)
 {
-	heartbeatCycle += 1;
+	heartbeatCycle = getMsTickCount();
 	heartbeatCycle %= heartbeatCycleSize;
 	
-	if (heartbeatCycle == 0)
+	if (heartbeatCycle < heartbeatOnTime)
 		turnOffLED();
-	if (heartbeatCycle == heartbeatOnTime)
+	else
 		turnOnLED();
 }
 
