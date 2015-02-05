@@ -39,6 +39,7 @@
 #include "adc.h"
 #include "MozAvrAmmeter.h"
 #include "PacketParser.h"
+#include "I2C_Master.c"
 
 /** Circular buffer to hold data received from the host. */
 static RingBuffer_t USB_Receive_Buffer; // USBtoUSART_Buffer
@@ -76,6 +77,7 @@ static uint8_t compensation = 0;
 static float baselineVoltage = 4.2;
 
 static uint8_t loggingFlag = 0;
+static uint8_t batteryCheckedFlag = 0;
 
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
@@ -371,13 +373,34 @@ static void ReadLoggingFlag ( void )
 }
 
 
-void turnOnAsyncCapture (void )
+void turnOnAsyncCapture ( void )
 {
 	cli(); // turn off interrupts so we can zero the ms counter
 	currentSample = 0;
 	msTickCountBase = 0;
 	sei(); // turn interrupts back on
 	sendingSamples = 1;
+}
+
+
+float readAuxBatteryVoltage ( void )
+{
+    I2C_Init(); // We bit-bang an I2C master on a couple pins from the programming port
+    I2C_Start();
+    I2C_Write(0x6C); // Write address of device
+    I2C_Write(0x02); // register 2 is VCELL, which is the voltage of the cell
+    I2C_Stop();
+    I2C_Start();
+    I2C_Write(0x6D); // Read address of device
+    // Read VCELL register
+    uint8_t highByte = I2C_Read(1);
+    uint8_t lowByte = I2C_Read(0); // only the high nibble of the low byte is used
+    I2C_Stop();
+//     printf("High/Low: %d/%d\n", highByte, lowByte);
+    uint16_t total = ((uint16_t)highByte * 16) + (lowByte / 16); // shift the high byte up 4 bits, and the low byte down 4 bits
+    float voltage = (float)total * 0.00125; // the total is in units of 1.25 mV, so convert it to volts
+//     printf("Total: %d\n", total);
+    return voltage;
 }
 
 
@@ -612,6 +635,23 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
 					break;
 				}
 				
+				case PACKET_CMD_CHECK_AUX_BATTERY:
+				{
+					loggingFlag = 0;
+					if (debugMode) {
+						debugMode = 0;
+					} else {
+						InitUART ();
+						fdevopen (UART1_PutCharStdio, UART1_GetCharStdio);
+					}
+					printf("I2C Test\n");
+                    float voltage = readAuxBatteryVoltage();
+                    char output[16];
+                    dtostrf(voltage, 4, 2, output);
+                    printf("Battery Voltage: %s volts\n", output);
+					break;
+				}
+				
 				default:
 				{
 					// there are other commands that we don't care about....
@@ -823,6 +863,28 @@ void dumpDebugInfo (void)
 	printf ("===\n\n");
 }
 
+
+void checkBattery (void)
+{
+    if ((getMsTickCount() % 60000) < 500) {
+        if (!batteryCheckedFlag) {
+            float voltage = readAuxBatteryVoltage();
+            if ((voltage > 1.0) && (voltage < 3.2)) { // voltages below 1.0 indicate a spurious reading, so we'll ignore those...
+                heartbeatCycle = 0;
+                heartbeatOnTime = 400;
+                heartbeatCycleSize = 500;
+            }
+            char output[16];
+            dtostrf(voltage, 4, 2, output);
+            printf("Battery Voltage: %s volts\n", output);
+            batteryCheckedFlag = 1;
+        }
+    } else {
+        batteryCheckedFlag = 0;
+    }
+}
+            
+
 /** Main program entry point. This routine contains the overall program flow, including initial
  *  setup of all components and the main program loop.
  */
@@ -850,6 +912,9 @@ int main(void)
 		}
 		ProcessSample();
 		LEDHeartbeat();
+        if (loggingFlag) {
+            checkBattery();
+        }
 	}
 }
 
