@@ -153,6 +153,15 @@ USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface =
 #define FLAG2_PORT PORTD
 #define FLAG2_MASK ( 1 << 3 )
 
+#define AUX_USB_POWER_DDR DDRB
+#define AUX_USB_POWER_PORT PORTB
+#define AUX_USB_POWER_MASK ( 1 << 0 )
+
+#define AUX_USB_SWITCH_DDR DDRB
+#define AUX_USB_SWITCH_PORT PORTB
+#define AUX_USB_SWITCH_MASK ( 1 << 7 )
+
+
 #define SPI_CLOCK_TIME 10
 
 #define SetDirectionIn(x)   x ## _DDR &= ~ x ## _MASK; x ## _PORT &= ~ x ##_MASK
@@ -404,6 +413,73 @@ float readAuxBatteryVoltage ( void )
 }
 
 
+void AuxUSB_Disable ( void )
+{
+    // both of these switches are high disable/low enable...
+    AUX_USB_POWER_PORT |= AUX_USB_POWER_MASK;
+    AUX_USB_SWITCH_PORT |= AUX_USB_SWITCH_MASK;
+}
+
+
+void AuxUSB_Enable ( void )
+{
+    // both of these switches are high disable/low enable...
+    AUX_USB_POWER_PORT &= ~AUX_USB_POWER_MASK;
+    AUX_USB_SWITCH_PORT &= ~AUX_USB_SWITCH_MASK;
+}
+
+
+//
+// The values in the table below are resistance values,
+// provided by the manufacturer of the thermistor we're using.
+// The table is indexed by temperature in degrees C, with
+// the first value representing -30, and incrementing by 1 degree C
+// for each table entry. The last entry is for 90 degrees C.
+//
+// http://www.ussensor.com/sites/default/files/downloads/USP12397%20(R-T%20Table).xls
+//
+
+const uint32_t temperatureLookup[] PROGMEM =
+    {
+        111337, 105805, 100579, 95639, 90969, 86551, 82373, 78418, 
+        74675, 71131, 67774, 64594, 61580, 58723, 56014, 53444,
+        51006, 48692, 46496, 44411, 42430, 40548, 38760, 37060, 
+        35443, 33906, 32444, 31052, 29728, 28467, 27266, 26122, 
+        25032, 23994, 23004, 22060, 21159, 20300, 19481, 18699, 
+        17952, 17239, 16558, 15908, 15286, 14692, 14124, 13581, 
+        13062, 12565, 12089, 11634, 11199, 10782, 10383, 10000, 
+        9634, 9282, 8946, 8623, 8314, 8017, 7732, 7459, 
+        7197, 6945, 6704, 6472, 6249, 6035, 5830, 5632, 
+        5442, 5260, 5084, 4915, 4753, 4597, 4446, 4302, 
+        4163, 4028, 3899, 3775, 3655, 3540, 3429, 3322, 
+        3218, 3119, 3023, 2930, 2841, 2755, 2671, 2591, 
+        2514, 2439, 2367, 2297, 2230, 2165, 2102, 2041, 
+        1982, 1926, 1871, 1818, 1766, 1717, 1669, 1623, 
+        1578, 1534, 1492, 1451, 1412, 1374, 1337, 1301, 
+        1266
+    };
+
+uint8_t temperatureLookupCount = sizeof(temperatureLookup) / sizeof(temperatureLookup[0]);
+
+float ReadTemperatureProbe ( void )
+{
+    uint32_t voltageValue = ADC_Read (1);
+    uint32_t millivolts = voltageValue * 5070 / 1023;
+    float realVoltage = (float)millivolts / 1000.0;
+    uint32_t calculatedResistance = (uint32_t)((realVoltage * 10000.0) / (5.0 - realVoltage));
+    int degrees = -100;
+    for (int index = 0; index < temperatureLookupCount; index++) {
+        uint32_t resistance = pgm_read_dword(&(temperatureLookup[index]));
+        if ((resistance <= calculatedResistance) && (degrees == -100)) {
+            degrees = index - 30;
+        }
+    }
+    return (float)degrees;
+//     float value = (float)ADC_Read(8);
+//     return value;
+}
+
+
 static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PACKET_Error_t err)
 {
 	if (err == PACKET_ERROR_NONE)
@@ -651,8 +727,47 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
                     printf("Battery Voltage: %s volts\n", output);
 					break;
 				}
-				
-				default:
+
+                case PACKET_CMD_TURN_OFF_AUX_USB:
+                {
+                    //printf ("got TURN_OFF_BATTERY command\n");
+                    AuxUSB_Disable();
+                    break;
+                }
+
+                case PACKET_CMD_TURN_ON_AUX_USB:
+                {
+                    //printf ("got TURN_ON_BATTERY command\n");
+                    AuxUSB_Enable();
+                    break;
+                }
+
+                case PACKET_CMD_GET_TEMPERATURE:
+                {
+                    if (debugMode) {
+                        printf ("got PACKET_CMD_GET_TEMPERATURE command\n");
+                    }
+                    float temperature = ReadTemperatureProbe();
+                    RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+                    RingBuffer_Insert(&Send_USB_Buffer, 0xFF);
+                    RingBuffer_Insert(&Send_USB_Buffer, 0x01); // ammeter id
+                    uint8_t checksum = 0x01;
+                    uint8_t floatSize = sizeof(temperature);
+                    uint8_t packetLength = floatSize + 2;
+                    RingBuffer_Insert(&Send_USB_Buffer, packetLength); // packet length, including all framing
+                    checksum += packetLength;
+                    RingBuffer_Insert(&Send_USB_Buffer, PACKET_CMD_TEMPERATURE); // command
+                    checksum += PACKET_CMD_TEMPERATURE;
+                    for (int index=0; index < floatSize; index++) {
+                        uint8_t value = ((uint8_t *)&temperature)[index];
+                        RingBuffer_Insert(&Send_USB_Buffer, value);
+                        checksum += value;
+                    }
+                    RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
+                    break;
+                }
+
+                default:
 				{
 					// there are other commands that we don't care about....
 					//printf ("ID:0x%02x Cmd: 0x%02x *** Unknown ***\n", packet->m_id, packet->m_cmd);
@@ -740,7 +855,7 @@ static void ProcessUSB(PACKET_Instance_t *inst)
 
 void LogSamples(uint8_t packetCount) {
 	for (int i=0; i<packetCount; i++) {
-		printf ("%u,%u,%lu\n", samples[i].voltage, samples[i].current, samples[i].msCounter);
+		printf ("%u,%d,%lu\n", samples[i].voltage, samples[i].current, samples[i].msCounter);
 	}	
 }
 
@@ -989,7 +1104,11 @@ void SetupHardware(void)
 	
 	SetDirectionOut(LED);
 	turnOffLED();
-	
+
+    SetDirectionOut(AUX_USB_POWER);
+    SetDirectionOut(AUX_USB_SWITCH);
+    AuxUSB_Enable();
+
 // 	SetDirectionOut(FLAG);
 // 	turnOffFlag();
 // 	SetDirectionOut(FLAG2);
