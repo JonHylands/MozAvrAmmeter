@@ -766,6 +766,17 @@ static void PacketReceived (PACKET_Instance_t *inst, PACKET_Packet_t *packet, PA
                     RingBuffer_Insert(&Send_USB_Buffer, ~checksum);
                     break;
                 }
+                
+                case PACKET_CMD_SOFT_RESET:
+                {
+                    if (debugMode) {
+                        printf ("got PACKET_CMD_SOFT_RESET command\n");
+                    }
+                    wdt_enable(WDTO_60MS);
+                    while(1) {};
+                    
+                    break;
+                }
 
                 default:
 				{
